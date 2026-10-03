@@ -31,6 +31,8 @@ if (!ADMIN_TOKEN || ADMIN_TOKEN.length < 16) {
   process.exit(1);
 }
 
+const ADMIN_HTML = fs.readFileSync(path.join(__dirname, 'admin.html'), 'utf8');
+
 // ---------------------------------------------------------------- saqlash
 function loadDb() {
   try {
@@ -149,6 +151,18 @@ const server = http.createServer(async (req, res) => {
 
   try {
     if (req.method === 'GET' && url.pathname === '/health') return send(res, 200, { ok: true });
+
+    // Admin sahifa: unda maxfiy narsa yo'q, barcha so'rovlar parol bilan himoyalangan API'ga ketadi.
+    if (req.method === 'GET' && (url.pathname === '/admin' || url.pathname === '/admin/')) {
+      res.writeHead(200, {
+        'content-type': 'text/html; charset=utf-8',
+        'cache-control': 'no-store',
+        'x-frame-options': 'DENY',
+        'referrer-policy': 'no-referrer',
+        'content-security-policy': "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'"
+      });
+      return res.end(ADMIN_HTML);
+    }
 
     if (url.pathname.startsWith('/admin/')) {
       if (!safeEq(req.headers['x-admin-token'] || '', ADMIN_TOKEN)) return send(res, 401, { error: 'Ruxsat yo\'q.' });

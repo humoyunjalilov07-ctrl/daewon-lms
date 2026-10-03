@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Daewon — kalitlar</title>
+<style>
+  :root { --bg:#0f172a; --card:#1e293b; --line:#334155; --text:#f1f5f9; --muted:#94a3b8; --acc:#0284c7; --bad:#dc2626; --ok:#4ade80; }
+  @media (prefers-color-scheme: light) {
+    :root { --bg:#f8fafc; --card:#fff; --line:#e2e8f0; --text:#0f172a; --muted:#64748b; --acc:#0284c7; --bad:#dc2626; --ok:#16a34a; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif; padding:16px; }
+  main { max-width:960px; margin:0 auto; }
+  h1 { font-size:20px; margin:0 0 16px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px; margin-bottom:14px; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  input { flex:1 1 140px; min-width:0; padding:10px; border-radius:8px; border:1px solid var(--line); background:var(--bg); color:var(--text); font:inherit; }
+  button { padding:9px 12px; border-radius:8px; border:0; background:var(--acc); color:#fff; font:inherit; font-weight:600; cursor:pointer; }
+  button.ghost { background:transparent; color:var(--text); border:1px solid var(--line); }
+  button.bad { background:var(--bad); }
+  .msg { margin-top:8px; min-height:20px; color:var(--muted); word-break:break-word; }
+  .new { margin-top:10px; padding:10px; border:1px dashed var(--acc); border-radius:8px; font-family:ui-monospace,Consolas,monospace; font-size:17px; word-break:break-all; display:none; }
+  .keys { display:grid; gap:10px; }
+  .k { border:1px solid var(--line); border-radius:10px; padding:10px; background:var(--card); }
+  .k code { font-size:15px; font-weight:700; }
+  .meta { color:var(--muted); font-size:13px; margin:4px 0 8px; word-break:break-word; }
+  .tag { font-size:12px; padding:1px 8px; border-radius:99px; border:1px solid var(--line); }
+  .tag.ok { color:var(--ok); } .tag.off { color:var(--bad); }
+  .acts { display:flex; gap:6px; flex-wrap:wrap; }
+  .acts button { padding:6px 10px; font-size:13px; }
+  [hidden] { display:none !important; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Daewon — litsenziya kalitlari</h1>
+
+  <section class="card">
+    <div class="row">
+      <input id="token" type="password" placeholder="Admin parol" autocomplete="off">
+      <button id="login">Kirish</button>
+    </div>
+    <div class="msg" id="loginMsg"></div>
+  </section>
+
+  <section class="card" id="createCard" hidden>
+    <div class="row">
+      <input id="label" placeholder="Kimga (masalan, Ali)" maxlength="80">
+      <input id="days" type="number" min="1" placeholder="Necha kun (bo'sh = umrbod)">
+      <button id="create">Kalit yaratish</button>
+    </div>
+    <div class="new" id="newKey"></div>
+    <div class="msg" id="createMsg"></div>
+  </section>
+
+  <section id="listCard" hidden>
+    <div class="row" style="margin-bottom:10px">
+      <strong id="count"></strong>
+      <button class="ghost" id="refresh" style="margin-left:auto">Yangilash</button>
+    </div>
+    <div class="keys" id="keys"></div>
+  </section>
+</main>
+
+<script>
+(() => {
+  'use strict';
+  const $ = id => document.getElementById(id);
+  let token = '';
+  try { token = sessionStorage.getItem('dwAdmin') || ''; } catch (_) {}
+
+  async function api(path, body) {
+    const res = await fetch(path, {
+      method: body ? 'POST' : 'GET',
+      headers: { 'x-admin-token': token, 'content-type': 'application/json' },
+      body: body ? JSON.stringify(body) : undefined
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(json.error || ('Xato ' + res.status));
+    return json;
+  }
+
+  const fmt = iso => iso ? new Date(iso).toLocaleString() : '—';
+
+  function card(key, r) {
+    const el = document.createElement('div'); el.className = 'k';
+    const head = document.createElement('div');
+    const code = document.createElement('code'); code.textContent = key;
+    const tag = document.createElement('span');
+    const expired = r.expiresAt && Date.parse(r.expiresAt) < Date.now();
+    const off = r.revoked || expired;
+    tag.className = 'tag ' + (off ? 'off' : 'ok');
+    tag.textContent = r.revoked ? 'o\'chirilgan' : expired ? 'muddati tugagan' : 'faol';
+    head.append(code, ' ', tag, r.label ? ' · ' + r.label : '');
+    const meta = document.createElement('div'); meta.className = 'meta';
+    meta.textContent = 'Qurilma: ' + (r.deviceId ? 'bog\'langan' : 'bo\'sh') +
+      ' · LMS: ' + (r.lmsUserId || '—') +
+      ' · Muddat: ' + (r.expiresAt ? fmt(r.expiresAt) : 'umrbod') +
+      ' · Oxirgi: ' + fmt(r.lastSeenAt) + ' (' + (r.lastIp || '—') + ')' +
+      ' · IPlar: ' + ((r.ips || []).length);
+    const acts = document.createElement('div'); acts.className = 'acts';
+    const mk = (text, cls, fn) => { const b = document.createElement('button'); b.textContent = text; if (cls) b.className = cls; b.onclick = fn; acts.append(b); };
+    mk('Nusxalash', 'ghost', () => navigator.clipboard.writeText(key));
+    mk(r.revoked ? 'Tiklash' : 'O\'chirish', r.revoked ? '' : 'bad', () => act(r.revoked ? 'restore' : 'revoke', key));
+    mk('Qurilmani tozalash', 'ghost', () => {
+      if (confirm('Qurilma va LMS bog\'lanishi tozalansinmi? Kalit keyingi kiritilgan qurilmaga bog\'lanadi.')) act('reset', key);
+    });
+    el.append(head, meta, acts);
+    return el;
+  }
+
+  async function act(action, key) {
+    try { await api('/admin/keys/' + action, { key }); await load(); }
+    catch (e) { $('createMsg').textContent = e.message; }
+  }
+
+  async function load() {
+    const keys = await api('/admin/keys');
+    const entries = Object.entries(keys).sort((a, b) => (b[1].createdAt || '').localeCompare(a[1].createdAt || ''));
+    $('count').textContent = 'Kalitlar: ' + entries.length;
+    $('keys').replaceChildren(...entries.map(([k, r]) => card(k, r)));
+    $('createCard').hidden = false; $('listCard').hidden = false;
+  }
+
+  async function login() {
+    token = $('token').value.trim() || token;
+    $('loginMsg').textContent = '';
+    try {
+      await load();
+      try { sessionStorage.setItem('dwAdmin', token); } catch (_) {}
+      $('token').value = ''; $('loginMsg').textContent = 'Kirildi.';
+    } catch (e) {
+      $('loginMsg').textContent = e.message;
+    }
+  }
+
+  $('login').onclick = login;
+  $('token').addEventListener('keydown', e => { if (e.key === 'Enter') login(); });
+  $('refresh').onclick = () => load().catch(e => { $('createMsg').textContent = e.message; });
+  $('create').onclick = async () => {
+    $('createMsg').textContent = ''; $('newKey').style.display = 'none';
+    try {
+      const body = { label: $('label').value.trim() };
+      if ($('days').value) body.days = Number($('days').value);
+      const r = await api('/admin/keys', body);
+      $('newKey').textContent = r.key; $('newKey').style.display = 'block';
+      $('createMsg').textContent = 'Yaratildi. Kalitni nusxalab foydalanuvchiga bering.';
+      $('label').value = ''; $('days').value = '';
+      await load();
+    } catch (e) { $('createMsg').textContent = e.message; }
+  };
+
+  if (token) login();
+})();
+</script>
+</body>
+</html>

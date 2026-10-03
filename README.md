@@ -2,6 +2,10 @@
 
 Bog'liqliksiz Node (18+) server: kalit + qurilma + LMS akkaunt bog'lash, 1 soatlik imzolangan chipta (JWT, HS256).
 
+## Admin sahifa
+
+Brauzerda `https://<manzil>/admin` ni oching, `ADMIN_TOKEN` ni kiriting: kalit yaratish, ro'yxat, o'chirish/tiklash va qurilmani tozalash tugmalar bilan bajariladi (terminal kerak emas). Parol kodda saqlanmaydi, faqat brauzer sessiyasida turadi.
+
 ## Ishga tushirish
 
 ```bash
