@@ -182,6 +182,11 @@ const server = http.createServer(async (req, res) => {
       }
       const rec = db.keys[body.key];
       if (!rec) return send(res, 404, { error: 'Kalit topilmadi.' });
+      if (url.pathname === '/admin/keys/delete') {
+        delete db.keys[body.key]; // butunlay o'chirish: qaytarib bo'lmaydi
+        saveDb();
+        return send(res, 200, { ok: true });
+      }
       if (url.pathname === '/admin/keys/revoke') rec.revoked = true;
       else if (url.pathname === '/admin/keys/restore') rec.revoked = false;
       else if (url.pathname === '/admin/keys/reset') { rec.deviceId = null; rec.lmsUserId = null; }

@@ -22,7 +22,9 @@
   .msg { margin-top:8px; min-height:20px; color:var(--muted); word-break:break-word; }
   .new { margin-top:10px; padding:10px; border:1px dashed var(--acc); border-radius:8px; font-family:ui-monospace,Consolas,monospace; font-size:17px; word-break:break-all; display:none; }
   .keys { display:grid; gap:10px; }
-  .k { border:1px solid var(--line); border-radius:10px; padding:10px; background:var(--card); }
+  .k { position:relative; border:1px solid var(--line); border-radius:10px; padding:10px; padding-right:44px; background:var(--card); }
+  .k .del { position:absolute; top:8px; right:8px; width:30px; height:30px; padding:0; border-radius:8px; background:transparent; color:var(--muted); border:1px solid var(--line); font-size:20px; line-height:1; }
+  .k .del:hover { background:var(--bad); color:#fff; border-color:var(--bad); }
   .k code { font-size:15px; font-weight:700; }
   .meta { color:var(--muted); font-size:13px; margin:4px 0 8px; word-break:break-word; }
   .tag { font-size:12px; padding:1px 8px; border-radius:99px; border:1px solid var(--line); }
@@ -85,13 +87,19 @@
 
   function card(key, r) {
     const el = document.createElement('div'); el.className = 'k';
+    const del = document.createElement('button');
+    del.className = 'del'; del.textContent = '×'; del.title = 'Kalitni butunlay o\'chirish';
+    del.onclick = () => {
+      if (confirm(key + (r.label ? ' (' + r.label + ')' : '') + ' kaliti butunlay o\'chirilsinmi? Qaytarib bo\'lmaydi.')) act('delete', key);
+    };
+    el.append(del);
     const head = document.createElement('div');
     const code = document.createElement('code'); code.textContent = key;
     const tag = document.createElement('span');
     const expired = r.expiresAt && Date.parse(r.expiresAt) < Date.now();
     const off = r.revoked || expired;
     tag.className = 'tag ' + (off ? 'off' : 'ok');
-    tag.textContent = r.revoked ? 'o\'chirilgan' : expired ? 'muddati tugagan' : 'faol';
+    tag.textContent = r.revoked ? 'bloklangan' : expired ? 'muddati tugagan' : 'faol';
     head.append(code, ' ', tag, r.label ? ' · ' + r.label : '');
     const meta = document.createElement('div'); meta.className = 'meta';
     meta.textContent = 'Qurilma: ' + (r.deviceId ? 'bog\'langan' : 'bo\'sh') +
@@ -102,7 +110,7 @@
     const acts = document.createElement('div'); acts.className = 'acts';
     const mk = (text, cls, fn) => { const b = document.createElement('button'); b.textContent = text; if (cls) b.className = cls; b.onclick = fn; acts.append(b); };
     mk('Nusxalash', 'ghost', () => navigator.clipboard.writeText(key));
-    mk(r.revoked ? 'Tiklash' : 'O\'chirish', r.revoked ? '' : 'bad', () => act(r.revoked ? 'restore' : 'revoke', key));
+    mk(r.revoked ? 'Tiklash' : 'Bloklash', r.revoked ? '' : 'bad', () => act(r.revoked ? 'restore' : 'revoke', key));
     mk('Qurilmani tozalash', 'ghost', () => {
       if (confirm('Qurilma va LMS bog\'lanishi tozalansinmi? Kalit keyingi kiritilgan qurilmaga bog\'lanadi.')) act('reset', key);
     });
