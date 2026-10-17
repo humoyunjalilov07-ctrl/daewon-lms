@@ -235,7 +235,13 @@ const server = http.createServer(async (req, res) => {
         return send(res, 200, db.scripts);
       }
       if (url.pathname === '/admin/keys') {
-        const key = newKey();
+        // Eski kalitni qo'lda qayta kiritish mumkin (ma'lumot yo'qolganda); bo'sh bo'lsa yangi yaratiladi.
+        let key;
+        if (body.key) {
+          key = String(body.key).trim().toUpperCase();
+          if (!/^DW-[A-Z2-9]{4}-[A-Z2-9]{4}-[A-Z2-9]{4}$/.test(key)) return send(res, 400, { error: 'Kalit formati noto\'g\'ri (DW-XXXX-XXXX-XXXX).' });
+          if (db.keys[key]) return send(res, 409, { error: 'Bu kalit allaqachon bor.' });
+        } else key = newKey();
         db.keys[key] = {
           label: String(body.label || '').slice(0, 80),
           createdAt: new Date().toISOString(),

@@ -48,6 +48,7 @@
 
   <section class="card" id="createCard" hidden>
     <div class="row">
+      <input id="oldKey" placeholder="Eski kalit (ixtiyoriy): DW-XXXX-XXXX-XXXX" maxlength="20">
       <input id="label" placeholder="Kimga (masalan, Ali)" maxlength="80">
       <input id="days" type="number" min="1" placeholder="Necha kun (bo'sh = umrbod)">
       <button id="create">Kalit yaratish</button>
@@ -197,10 +198,11 @@
     try {
       const body = { label: $('label').value.trim() };
       if ($('days').value) body.days = Number($('days').value);
+      if ($('oldKey').value.trim()) body.key = $('oldKey').value.trim();
       const r = await api('/admin/keys', body);
       $('newKey').textContent = r.key; $('newKey').style.display = 'block';
       $('createMsg').textContent = 'Yaratildi. Kalitni nusxalab foydalanuvchiga bering.';
-      $('label').value = ''; $('days').value = '';
+      $('label').value = ''; $('days').value = ''; $('oldKey').value = '';
       await load();
     } catch (e) { $('createMsg').textContent = e.message; }
   };
