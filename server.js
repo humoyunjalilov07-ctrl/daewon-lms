@@ -31,7 +31,28 @@ if (!ADMIN_TOKEN || ADMIN_TOKEN.length < 16) {
   process.exit(1);
 }
 
-const ADMIN_HTML = fs.readFileSync(path.join(__dirname, 'admin.html'), 'utf8');
+const PRIVACY_HTML = `<!doctype html><html lang="uz"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Video darslar: maxfiylik siyosati</title>
+<style>body{font:16px/1.6 system-ui,sans-serif;max-width:720px;margin:32px auto;padding:0 16px;color:#1b1f23}@media(prefers-color-scheme:dark){body{background:#1c1f24;color:#e8eaed}}</style></head><body>
+<h1>Video darslar: maxfiylik siyosati</h1>
+<p>Video darslar brauzer kengaytmasi universitet LMS saytlarida video darslarni avtomatik ijro etuvchi skriptlarni yetkazadi.</p>
+<h2>Qanday ma'lumotlar yig'iladi</h2>
+<ul>
+<li><b>Litsenziya kaliti</b> — siz kengaytmaga kiritgan kalit. Uning haqiqiyligini tekshirish uchun serverimizga yuboriladi.</li>
+<li><b>Qurilma identifikatori</b> — kengaytma o'zi yaratgan tasodifiy ID. Kalitni bitta qurilmaga bog'lash uchun ishlatiladi.</li>
+<li><b>IP manzil va oxirgi faollik vaqti</b> — suiiste'molni aniqlash uchun serverda saqlanadi.</li>
+<li><b>LMS akkaunt ID</b> — skript LMS sahifasidan topsa, kalitni shu akkauntga bog'lash uchun yuboriladi.</li>
+</ul>
+<h2>Nimalar yig'ilmaydi</h2>
+<p>Brauzer tarixi, ko'rilgan sahifalar manzili, parollar, sahifa mazmuni va shaxsiy xabarlar yig'ilmaydi va yuborilmaydi. Kengaytma qaysi saytga kirganingizni serverga bildirmaydi.</p>
+<h2>Ma'lumotlardan foydalanish</h2>
+<p>Ma'lumotlar faqat litsenziyani tekshirish va skriptlarni yetkazish uchun ishlatiladi. Uchinchi tomonlarga sotilmaydi va berilmaydi.</p>
+<h2>Saqlash va o'chirish</h2>
+<p>Kalit o'chirilganda unga tegishli yozuv serverdan olib tashlanadi. Kengaytmani o'chirsangiz, brauzerdagi barcha saqlangan ma'lumotlar ham o'chadi.</p>
+<h2>Aloqa</h2>
+<p>Savollar uchun kengaytmani sizga bergan shaxsga murojaat qiling.</p>
+</body></html>`;
+
+const ADMIN_HTML =fs.readFileSync(path.join(__dirname, 'admin.html'), 'utf8');
 
 // ---------------------------------------------------------------- saqlash
 function loadDb() {
@@ -42,6 +63,7 @@ function loadDb() {
   }
 }
 const db = loadDb();
+if (!Array.isArray(db.scripts)) db.scripts = []; // extension foydalanuvchilarga yetkazadigan skriptlar
 function saveDb() {
   const tmp = DATA_FILE + '.tmp';
   fs.writeFileSync(tmp, JSON.stringify(db, null, 2));
@@ -133,7 +155,7 @@ function send(res, status, obj) {
 function readJson(req) {
   return new Promise((resolve, reject) => {
     let size = 0; const chunks = [];
-    req.on('data', c => { size += c.length; if (size > 16 * 1024) { reject(new Error('big')); req.destroy(); } else chunks.push(c); });
+    req.on('data', c => { size += c.length; if (size > 512 * 1024) { reject(new Error('big')); req.destroy(); } else chunks.push(c); });
     req.on('end', () => { try { resolve(JSON.parse(Buffer.concat(chunks).toString() || '{}')); } catch (e) { reject(e); } });
     req.on('error', reject);
   });
@@ -152,6 +174,25 @@ const server = http.createServer(async (req, res) => {
   try {
     if (req.method === 'GET' && url.pathname === '/health') return send(res, 200, { ok: true });
 
+    // Do'konlar (Chrome Web Store, AMO) talab qiladigan maxfiylik siyosati sahifasi.
+    if (req.method === 'GET' && url.pathname === '/privacy') {
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'public, max-age=3600' });
+      return res.end(PRIVACY_HTML);
+    }
+
+    // Extension skriptlarni shu yerdan oladi: faqat yaroqli kalit chiptasi bilan.
+    if (req.method === 'POST' && url.pathname === '/scripts') {
+      if (rateLimited(ip)) return send(res, 429, { error: 'Juda ko\'p so\'rov. Biroz kuting.' });
+      const body = await readJson(req);
+      const claims = verify(body.token);
+      if (!claims) return send(res, 401, { error: 'Chipta yaroqsiz yoki eskirgan.' });
+      const checked = checkBinding(db.keys[claims.k], body.deviceId, null);
+      if (checked.error) return send(res, 403, { error: checked.error });
+      return send(res, 200, {
+        scripts: db.scripts.filter(x => x.enabled).map(x => ({ id: x.id, name: x.name, version: x.version, matches: x.matches, code: x.code }))
+      });
+    }
+
     // Admin sahifa: unda maxfiy narsa yo'q, barcha so'rovlar parol bilan himoyalangan API'ga ketadi.
     if (req.method === 'GET' && (url.pathname === '/admin' || url.pathname === '/admin/')) {
       res.writeHead(200, {
@@ -167,8 +208,32 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname.startsWith('/admin/')) {
       if (!safeEq(req.headers['x-admin-token'] || '', ADMIN_TOKEN)) return send(res, 401, { error: 'Ruxsat yo\'q.' });
       if (req.method === 'GET' && url.pathname === '/admin/keys') return send(res, 200, db.keys);
+      if (req.method === 'GET' && url.pathname === '/admin/scripts') return send(res, 200, db.scripts);
       if (req.method !== 'POST') return send(res, 405, { error: 'Method' });
       const body = await readJson(req);
+      if (url.pathname === '/admin/scripts') {
+        // matches: ["domen.uz", "*.domen.uz"]; kod: userscript matni (sarlavha bo'lsa ham bo'ladi).
+        const matches = (Array.isArray(body.matches) ? body.matches : String(body.matches || '').split(/[\s,]+/))
+          .map(x => String(x).trim().toLowerCase()).filter(Boolean);
+        if (!matches.length || !matches.every(h => /^(\*\.)?([a-z0-9-]+\.)+[a-z]{2,}$/.test(h))) {
+          return send(res, 400, { error: 'Domenlar noto\'g\'ri (masalan: univer.ac.kr yoki *.univer.ac.kr).' });
+        }
+        const code = String(body.code || '');
+        if (!code.trim() || code.length > 400000) return send(res, 400, { error: 'Skript kodi bo\'sh yoki juda katta.' });
+        let rec = body.id && db.scripts.find(x => x.id === body.id);
+        if (!rec) { rec = { id: crypto.randomBytes(6).toString('hex'), createdAt: new Date().toISOString(), version: 0 }; db.scripts.push(rec); }
+        Object.assign(rec, {
+          name: String(body.name || 'Skript').slice(0, 80), matches, code,
+          enabled: body.enabled !== false, version: (rec.version || 0) + 1, updatedAt: new Date().toISOString()
+        });
+        saveDb();
+        return send(res, 200, db.scripts);
+      }
+      if (url.pathname === '/admin/scripts/delete') {
+        db.scripts = db.scripts.filter(x => x.id !== body.id);
+        saveDb();
+        return send(res, 200, db.scripts);
+      }
       if (url.pathname === '/admin/keys') {
         const key = newKey();
         db.keys[key] = {

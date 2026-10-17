@@ -56,6 +56,21 @@
     <div class="msg" id="createMsg"></div>
   </section>
 
+  <section class="card" id="sitesCard" hidden>
+    <strong>Skriptlar (extension foydalanuvchilarga o'zi yetkazadi)</strong>
+    <div class="row">
+      <input id="scName" placeholder="Nomi (masalan: Daewon)" maxlength="80">
+      <input id="scHosts" placeholder="Domenlar: univer.ac.kr, *.univer2.kr" maxlength="300" style="flex:1">
+    </div>
+    <textarea id="scCode" placeholder="Skript kodi (userscript sarlavhasi bilan yoki sarlavhasiz)" style="width:100%;min-height:140px;margin-top:8px;font-family:monospace;font-size:12px"></textarea>
+    <div class="row" style="margin-top:8px">
+      <button id="saveScript">Saqlash</button>
+      <button class="ghost" id="clearScript">Tozalash</button>
+    </div>
+    <div class="keys" id="sites"></div>
+    <div class="msg" id="siteMsg"></div>
+  </section>
+
   <section id="listCard" hidden>
     <div class="row" style="margin-bottom:10px">
       <strong id="count"></strong>
@@ -128,7 +143,29 @@
     const entries = Object.entries(keys).sort((a, b) => (b[1].createdAt || '').localeCompare(a[1].createdAt || ''));
     $('count').textContent = 'Kalitlar: ' + entries.length;
     $('keys').replaceChildren(...entries.map(([k, r]) => card(k, r)));
-    $('createCard').hidden = false; $('listCard').hidden = false;
+    $('createCard').hidden = false; $('listCard').hidden = false; $('sitesCard').hidden = false;
+    await loadSites();
+  }
+
+  let editId = null;
+  function clearForm() { editId = null; $('scName').value = ''; $('scHosts').value = ''; $('scCode').value = ''; }
+  async function loadSites() {
+    const list = await api('/admin/scripts');
+    $('sites').replaceChildren(...list.map(x => {
+      const el = document.createElement('div'); el.className = 'k';
+      const t = document.createElement('span');
+      t.textContent = x.name + ' v' + x.version + (x.enabled ? '' : ' (o"chirilgan)') + ' — ' + x.matches.join(', ');
+      const edit = document.createElement('button'); edit.className = 'ghost'; edit.textContent = 'Tahrirlash';
+      edit.onclick = () => { editId = x.id; $('scName').value = x.name; $('scHosts').value = x.matches.join(', '); $('scCode').value = x.code; scrollTo(0, document.body.scrollHeight); };
+      const del = document.createElement('button'); del.className = 'ghost'; del.textContent = '×';
+      del.onclick = async () => {
+        if (!confirm(x.name + ' skripti butunlay o"chirilsinmi?')) return;
+        try { await api('/admin/scripts/delete', { id: x.id }); await loadSites(); }
+        catch (e) { $('siteMsg').textContent = e.message; }
+      };
+      el.append(t, edit, del);
+      return el;
+    }));
   }
 
   async function login() {
@@ -145,6 +182,15 @@
 
   $('login').onclick = login;
   $('token').addEventListener('keydown', e => { if (e.key === 'Enter') login(); });
+  $('clearScript').onclick = clearForm;
+  $('saveScript').onclick = async () => {
+    $('siteMsg').textContent = '';
+    try {
+      await api('/admin/scripts', { id: editId, name: $('scName').value.trim(), matches: $('scHosts').value, code: $('scCode').value });
+      clearForm(); $('siteMsg').textContent = 'Saqlandi.';
+      await loadSites();
+    } catch (e) { $('siteMsg').textContent = e.message; }
+  };
   $('refresh').onclick = () => load().catch(e => { $('createMsg').textContent = e.message; });
   $('create').onclick = async () => {
     $('createMsg').textContent = ''; $('newKey').style.display = 'none';
